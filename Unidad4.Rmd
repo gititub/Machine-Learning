@@ -1,0 +1,250 @@
+---
+title: "Unidad 4"
+author: "Amelia Martínez Sequera"
+date: "9/11/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# **Índice de contenidos**
+
+1. Algoritmo Naive Bayes. ¿Qué es?. Tabla de fortalezas y debilidades.
+
+2. Ejemplo *Floracion*:
+
+2.1. Obteniendo los datos.
+
+2.2. Análisis y procesado de los datos.
+
+2.3. Entrenando el modelo.
+
+2.4. Evaluando el modelo.
+
+2.5. Mejorando el modelo.
+
+2.6. Curvas ROC.
+
+
+# **1. El algoritmo Naive Bayes.**
+
+**¿Qué es?**
+
+El algoritmo de Naive Bayes se fundamenta en los conocidos como métodos bayesianos, un conjunto de principios matemáticos fundamentales desarrollados por Thomas Bayes cuyo fin es la descripción de eventos probabilísticos. Sobre esta base los clasificadores basados en los métodos bayesianos utilizan datos de entrenamiento para calcular una probabilidad observada de cada clase basada en los valores de las variables. Cuando el clasificador se utiliza posteriormente en datos no etiquetados, utiliza las probabilidades observadas para predecir la clase más probable de los nuevos datos dados para estas variables. 
+
+Se han utilizado clasificadores bayesianos para:
+
+- La clasificación de textos, como el filtrado de correo basura (spam), la identificación de autores o la categorización de temas.
+
+- La detección de intrusos o la detección de anomalías en las redes informáticas.
+
+- El diagnóstico de las condiciones médicas mediante conjuntos de síntomas observados.
+
+Típicamente, los clasificadores bayesianos se aplican mejor a los problemas en los que la información de numerosos atributos debe considerarse simultáneamente para estimar la probabilidad de un resultado. Mientras que muchos algoritmos ignoran aquellas características que tienen efectos débiles, los métodos bayesianos utilizan todas las pruebas disponibles para cambiar sutilmente las predicciones. Si un gran número de variables tienen efectos relativamente menores, en conjunto, su impacto combinado podría ser considerable.
+
+Naive Bayes asume que todas las características del conjunto de datos son igualmente importantes e independientes. Estos supuestos rara vez son verdaderos en el mundo real. 
+
+El algoritmo de Naive Bayes presenta un problema importante que surge si un evento nunca ocurre para uno o más niveles de la clase, y es que, debido a que las probabilidades en los algoritmos de Naive Bayes se multiplican, un valor del cero por ciento causa que la probabilidad posterior de que se de x suceso sea cero, lo que da a este evento nulo la capacidad para anular y dominar efectivamente sobre todas las demás evidencias.
+
+Una solución a este problema consiste en el uso de un elemento conocido como el Estimador de Laplace, que lleva el nombre del matemático francés Pierre-Simon Laplace. El estimador de Laplace lo que hace es añadir un pequeño número, una cifra residual, a cada uno de los recuentos realizados en la frecuencia, lo que asegura que cada característica tiene una probabilidad no nula de ocurrir con cada clase. Típicamente, el estimador de Laplace se fija en 1, lo que asegura que cada combinación de clases y características se encuentra en los datos al menos una vez.
+
+El estimador de Laplace se puede ajustar a cualquier valor, y no necesariamente tiene que ser el mismo para cada una de las características. Se podría usar el estimador de Laplace para reflejar una presunta probabilidad a priori de cómo la característica se relaciona con la clase. En la práctica, dado un conjunto de datos de entrenamiento lo suficientemente grande, este paso es innecesario, y casi siempre se utiliza el valor de uno.
+
+Puesto que el Naive Bayes utiliza tablas de frecuencia para el aprendizaje, cada característica debe ser categórica a fin de crear las combinaciones de valores de clase y característica que componen la matriz. Como los rasgos numéricos no tienen categorías de valores, este algoritmo no funciona directamente con los datos numéricos.
+
+Una solución fácil y eficaz es la de discretizar las variables numéricas, lo que significa simplemente que los números se colocan en categorías conocidas como contenedores (bins). Hay que tener en consideración es que la discretización de una variable numérica siempre da lugar a una reducción de la información, ya que la granularidad original de la variable se reduce a un conjunto de categorías. Es importante lograr un equilibrio, un número demasiado reducido de bins puede dar lugar a que se oculten tendencias importantes, mientras que un número demasiado elevado de bins puede dar lugar a recuentos pequeños en la tabla de frecuencias de Naive Bayes.
+
+**Tabla de fortaleza y debilidades**
+
+```{r, echo=F}
+library(kableExtra)
+text_tbl <- data.frame(
+  Fortalezas = c(
+    "Simple, rápido y muy efectivo",
+    "Funciona bien con ruido y datos faltantes",
+    "Requiere relativamente pocos ejemplos para
+entrenamiento, pero también funciona bien con
+una gran cantidad de ejemplos",
+    "Fácil de obtener la probabilidad estimada
+de una predicción"),
+  Debilidades = c(
+    "Se basa en una suposición a menudo errónea
+de igualdad de importancia y variables
+independientes",
+    "No es ideal para conjuntos de datos con muchas
+variables numéricas" ,
+    "Las probabilidades estimadas son menos 
+fiables que las clases predichas",
+    " "
+  )
+)
+
+kbl(text_tbl) %>%
+  kable_styling(full_width = F) %>%
+  column_spec(1,width = "20em", border_right = T) %>%
+  column_spec(2, width = "20em")
+```
+
+
+# **2. Ejemplo.**
+
+# **Step 1: Obtención de los datos**
+```{r}
+#Descargamos los archivos
+library(readr)
+flowering_time <- read_csv("C:/Users/Meli/Downloads/flowering_time.csv", 
+    col_names = FALSE)
+str(flowering_time)
+```
+
+# **Step 2: Análisis y procesado de los datos**
+```{r}
+# crearemos un vector vacío donde vamos a recodificar los valores
+# correspondientes a los días de floración en rápida (=< 40) 
+# o lenta (>40 días), en 0 y 1 respectivamente
+
+floracion <- vector() # Se crea un vector vacío
+floracion[flowering_time$X1 == 40] <- "0"
+floracion[flowering_time$X1 < 40] <- "0"
+floracion[flowering_time$X1 > 40] <- "1"
+
+floracion <- as.factor(floracion)
+table(floracion)
+str(floracion)
+```
+
+```{r}
+Genotypes <- read.csv(file.path("C:/Users/Meli/Downloads/genotype.csv"),
+                      stringsAsFactors = TRUE, header = F)
+for (i in 1:ncol(Genotypes)) {
+    Genotypes[, i] <- factor(Genotypes[, i])
+}
+```
+
+
+```{r}
+genotipo <- cbind(floracion, Genotypes) #unimos los dos archivos
+```
+
+```{r}
+library(e1071)
+
+#Separamos los datos en 2/3 training y 1/3 test.
+set.seed(12345)
+
+train<-sample(1:nrow(genotipo),round(2*nrow(genotipo)/3,0))
+
+training<- Genotypes[train,]
+test<- Genotypes[-train,]
+
+train_labels<-genotipo[train,1]
+test_labels<-genotipo[-train,1]
+
+```
+# **Step 3: Entrenando el modelo**
+
+```{r}
+classifier <- naiveBayes(training, train_labels)
+
+```
+# **Step 4: Evaluando el modelo**
+
+Para la evaluación del modelo Naive Bayes creado se requiere de hacer una predicción con el marco de datos de prueba de los genotipos mediante la función predict(), que tomará como parámetros el modelo creado y el mencionado marco de datos.
+
+```{r}
+test_pred <- predict(classifier, test)
+
+library(gmodels)
+
+CrossTable(test_pred, test_labels,nprop.chisq = FALSE, 
+           prop.t = FALSE, dnn = c('predicted', 'actual'))
+```
+```{r, message=F}
+library(caret)
+confusionMatrix(test_pred,test_labels, positive = "1")
+#La categoría positiva es floración lenta (1)
+```
+Se observa que de 232 sujetos analizados, se obtienen 27 falsos positivos y 43 falsos negativos. Es una tasa de error alta, luego conviene implementar estrategias para la mejora del modelo. Para ello, se recurre al estimador de Laplace, estableciendo para este un valor de 1. Se realiza la predicción y se crea la tabla de confusión.
+
+# **Step 5: Mejorando el modelo**
+
+```{r, message=F}
+#laplace = 1:
+classifier1 <- naiveBayes(training, train_labels,laplace = 1)
+
+test_pred1 <- predict(classifier1, test)
+
+#we'll compare the predicted classes to the actual classifications using a
+
+CrossTable(test_pred1, test_labels, prop.chisq = FALSE,
+           prop.t = FALSE, prop.r = FALSE, 
+           dnn = c('predicted', 'actual'))
+
+confusionMatrix(test_pred1,test_labels, positive = "1")
+```
+
+Se ha disminuido el número de falsos negativos de 43 a 42, y el número de falsos positivos de 27 a 26. Se prueba con otro valor para el estimador de laplace, como 0, pero se observa que la diferencia respecto a aplicar un laplace de 1 es mínima: igual número de errores tipo I y II, aunque obtenemos mejores valores estadísticos para laplace= 1.
+
+```{r, message=F}
+#laplace = 0:
+classifier0 <- naiveBayes(training, train_labels,laplace = 0)
+
+test_pred0 <- predict(classifier0, test)
+
+#we'll compare the predicted classes to the actual classifications using a
+
+CrossTable(test_pred0, test_labels, prop.chisq = FALSE, 
+           prop.t = FALSE, prop.r = FALSE, 
+           dnn = c('predicted', 'actual'))
+
+confusionMatrix(test_pred0,test_labels, positive = "1")
+
+```
+
+
+# **Step 6: Curvas ROC(Receiver Operating Characteristic)**
+
+Usar el argumento type =”raw” de la función predict() para obtener las probabilidades.
+
+```{r}
+#Para no laplace:
+library(ROCR)
+par(mfrow = c(1, 2))
+Pred.Prob <- predict(classifier, test, type = "raw")
+Pred.Prob <- as.data.frame(Pred.Prob)
+pred<- prediction(predictions = Pred.Prob[,2], labels= test_labels)
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+perf.auc <- performance(pred, measure = "auc")
+perf.auc <- unlist(perf.auc@y.values)
+plot(perf, colorize = TRUE, lwd = 2, main = paste("ROC.No Laplace. AUC=", round(perf.auc, 
+    3)))
+abline(a = 0, b = 1, lwd = 1, lty = 2)
+plot(perf, avg = "threshold", colorize = TRUE, lwd = 2, main = paste("ROC. No Laplace. AUC=", 
+    round(perf.auc, 3)))
+abline(a = 0, b = 1, lwd = 1, lty = 2)
+
+
+```
+```{r}
+#Para laplace=1
+par(mfrow = c(1, 2))
+Pred.Prob <- predict(classifier1, test, type = "raw")
+Pred.Prob <- as.data.frame(Pred.Prob)
+pred<- prediction(predictions = Pred.Prob[,2], labels= test_labels)
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+perf.auc <- performance(pred, measure = "auc")
+perf.auc <- unlist(perf.auc@y.values)
+plot(perf, colorize = TRUE, lwd = 2, main = paste("ROC.Laplace=1. AUC=", round(perf.auc, 
+    3)))
+abline(a = 0, b = 1, lwd = 1, lty = 2)
+plot(perf, avg = "threshold", colorize = TRUE, lwd = 2, main = paste("ROC.Laplace=1. AUC=", 
+    round(perf.auc, 3)))
+abline(a = 0, b = 1, lwd = 1, lty = 2)
+```
+
+Aunque cualitativamente no se observa una gran mejora en la gráfica, vemos un aumento cuantitativo en el valor del AUC.

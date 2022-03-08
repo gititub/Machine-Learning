@@ -1,0 +1,206 @@
+---
+title: "Unidad 2 parametrizado"
+author: "Amelia Martinez Sequera"
+params:
+  radius_mean:
+    label: Radius
+    value: 12
+    input: slider
+    min: 5
+    max: 30
+    step: 1
+    sep: ''
+  diagnosis:
+    label: Diagnosis
+    value: Malignant
+    input: select
+    choices:
+    - Malignant
+    - Benign
+  printcode:
+    label: 'Display Code:'
+    value: yes
+  data:
+    label: 'Input dataset:'
+    value: wisc_bc_data.csv
+    input: file
+output: pdf_document
+---     
+```{r setup, echo=F}
+library(htmltools)
+Malignant<- params$diagnosis
+
+```
+
+# Índice de contenidos:
+
+1. Tabla de fortalezas/debilidades del algoritmo k-NN.  
+2. Importación de los datos.  
+3. Exploración de los datos.  
+4. Normalización.  
+5. Training y Test datasets.  
+6. Entrenamiento del modelo.  
+7. Evaluación del modelo.  
+8. Mejorando el modelo.  
+
+# 1. Tabla fortalezas/debilidades.
+
+```{r, echo=FALSE}
+library(kableExtra)
+text_tbl <- data.frame(
+  Fortalezas = c(
+    "Simple y efectivo",
+    "No hace suposiciones sobre 
+    la distribución de datos subyacente",
+    "Fase de entrenamiento rápida",
+    " "),
+  Debilidades = c(
+    "No produce un modelo, limitando la
+capacidad para comprender cómo las características
+están relacionados con la clase",
+    "Requiere la selección de un k apropiado", 
+    "Características nominales y datos faltantes
+requieren procesamiento adicional.",
+    "Fase de clasificación lenta."
+  )
+)
+
+kbl(text_tbl) %>%
+  kable_styling(full_width = F) %>%
+  column_spec(1,width = "20em", border_right = T) %>%
+  column_spec(2, width = "20em")
+```
+
+# 2. Importación de los datos.
+```{r}
+library(readr)
+wbcd <- read.csv("C:/Users/Meli/Downloads/wisc_bc_data.csv", stringsAsFactors = FALSE)
+View(wbcd)
+str(wbcd)
+```
+
+# 3. Exploración de los datos.
+
+```{r}
+#Eliminamos la columna id
+wbcd <- wbcd[-1]
+#tabla de frecuencias absolutas de diagnósticos
+table(wbcd$diagnosis)
+```
+
+```{r}
+#Renombramos los factores
+wbcd$diagnosis<- factor(wbcd$diagnosis, levels = c("B", "M"),
+labels = c("Benign", "Malignant"))
+#Tabla de frecuencias relativas de diagnósticos
+round(prop.table(table(wbcd$diagnosis)) * 100, digits = 1)
+```
+
+# 4. Normalización de los datos.
+```{r}
+#Observamos que las variables numéricas tienen rangos muy diferentes
+summary(wbcd[c("radius_mean", "area_mean", "smoothness_mean")])
+```
+
+```{r}
+#Creamos una función para reescalar los datos numéricos.
+normalize <- function(x) {
+return ((x-min(x)) / (max(x)-min(x)))
+}
+```
+```{r}
+#Creamos un data frame con los datos numéricos normalizados
+wbcd_n <- as.data.frame(lapply(wbcd[2:31], normalize))
+```
+```{r}
+#Comprobamos que los datos ahora están normalizados, con valores que van del 0 al 1
+summary(wbcd_n$area_mean)
+```
+
+# 5. Training y Test datasets.
+
+```{r}
+#Creamos los Training and test datasets
+wbcd_train <- wbcd_n[1:469, ]
+wbcd_test <- wbcd_n[470:569, ]
+
+#Labels
+wbcd_train_labels <- wbcd[1:469, 1]
+wbcd_test_labels <- wbcd[470:569, 1]
+```
+
+# 6. Entrenamiento del modelo.
+
+```{r}
+library(class)
+wbcd_test_pred<- knn(train = wbcd_train, test = wbcd_test, cl= wbcd_train_labels, k=21)
+```
+
+# 7. Evaluación del modelo.
+
+```{r}
+library(gmodels)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred,
+prop.chisq=FALSE)
+```
+
+# 8. Mejorando el modelo.
+
+Con el modelo anterior se obtenían un 2% de falsos negativos. Esto no interesa, así que intentaremos mejorar el modelo:
+- Reescalando las variables numéricas.
+- Utilizando diferentes valores de k.
+
+*z-score standardization*
+
+```{r}
+wbcd_z <- as.data.frame(scale(wbcd[-1]))
+
+#Comprobamos que los valores han sido estandarizados
+summary(wbcd_z$area_mean)
+```
+
+Observamos que la media de los valores es 0. Procedemos de nuevo a crear los Test y Training datasets y a evaluar el modelo:
+
+```{r}
+wbcd_train <- wbcd_z[1:469, ]
+wbcd_test <- wbcd_z[470:569, ]
+wbcd_train_labels <- wbcd[1:469, 1]
+wbcd_test_labels <- wbcd[470:569, 1]
+wbcd_test_pred <- knn(train = wbcd_train, test = wbcd_test,
+cl = wbcd_train_labels, k = 21)
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred,
+prop.chisq = FALSE)
+```
+
+Se observa que los falsos negativos han aumentado a un 5%. 
+
+*Valores alternativos de k*
+
+Utilizamos diferentes valores de k con los datos normalizados:
+```{r}
+wbcd_test_pred1<- knn(train = wbcd_train, test = wbcd_test, cl= wbcd_train_labels, k=1)
+
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred1,
+prop.chisq=FALSE)
+
+wbcd_test_pred5<- knn(train = wbcd_train, test = wbcd_test, cl= wbcd_train_labels, k=5)
+
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred5,
+prop.chisq=FALSE)
+
+wbcd_test_pred11<- knn(train = wbcd_train, test = wbcd_test, cl= wbcd_train_labels, k=11)
+
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred11,
+prop.chisq=FALSE)
+
+wbcd_test_pred15<- knn(train = wbcd_train, test = wbcd_test, cl= wbcd_train_labels, k=15)
+
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred15,
+prop.chisq=FALSE)
+
+wbcd_test_pred27<- knn(train = wbcd_train, test = wbcd_test, cl= wbcd_train_labels, k=27)
+
+CrossTable(x = wbcd_test_labels, y = wbcd_test_pred27,
+prop.chisq=FALSE)
+```
+Observamos que con k=5 se obtiene un menor número de falsos positivos.

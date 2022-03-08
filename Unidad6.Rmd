@@ -1,0 +1,242 @@
+---
+title: 'Unidad 6: Predicción del tipo de tejido normal/tumoral en cáncer de colon
+  usando el algoritmo de Support Vector Machines.'
+author: "Amelia Martínez Sequera"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`' 
+# date: \today  (solo para pdf)
+output:
+  pdf_document:
+    keep_tex: yes
+    toc: yes
+    df_print: kable
+    highlight: zenburn
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: true
+    theme: united
+    highlight: tango
+  html_notebook:
+    df_print: paged
+    toc: yes
+    toc_float: true
+    theme: united
+    highlight: tango
+nocite: |
+  @lantz2015machine
+header-includes:
+  - \usepackage[spanish]{babel}
+params:
+  file1: colon2.csv
+  p.train: !r 2/3
+  seed.train: 12345
+  seed.clsfier: 1234567
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NULL, cache=TRUE)
+options(width=90)
+```
+# 1.Índice de contenidos.
+
+2. ¿Qué es el algoritmo de Support Vector Machines (SVM)? Características. 
+
+3. Tabla de fortalezas y debilidades.  
+
+4. Resolución del problema.    
+- Paso 1. Recolectando los datos.  
+- Paso 2. Explorando y preparando los datos.  
+- Paso 3. Entrenando el modelo.  
+- Paso 4. Evaluando el modelo.  
+- Paso 5. Mejorando el modelo.  
+
+5. Paquete caret: modelo svmLinear y svmRadial  
+
+
+# 2.¿Qué es el algoritmo de Support Vector Machines (SVM)? 
+
+El algoritmo SVM originariamente se desarrolló como un método de clasificación binaria, su aplicación se ha extendido a problemas de clasificación múltiple y regresión. Cuando se dispone de n observaciones, cada una con p predictores y cuya variable respuesta tiene dos niveles, se pueden emplear hiperplanos para construir un clasificador que permita predecir a que grupo pertenece una observación en función de sus predictores. Si la distribución de las observaciones es tal que se pueden separar linealmente de forma perfecta en las dos clases (+1 y −1),  el clasificador más sencillo consiste en asignar cada observación a una clase dependiendo del lado del hiperplano en el que se encuentre.
+
+La definición de hiperplano para casos perfectamente separables linealmente resulta en un número infinito de posibles hiperplanos, lo que hace necesario un método que permita seleccionar uno de ellos como clasificador óptimo.
+
+La solución a este problema consiste en seleccionar como clasificador óptimo al que se conoce como maximal margin hyperplane o hiperplano óptimo de separación, que se corresponde con el hiperplano que se encuentra más alejado de todas las observaciones de entrenamiento. Para obtenerlo, se tiene que calcular la distancia perpendicular de cada observación a un determinado hiperplano. La menor de estas distancias (conocida como margen) determina como de alejado está el hiperplano de las observaciones de entrenamiento. El maximal margin hyperplane se define como el hiperplano que consigue un mayor margen, es decir, que la distancia mínima entre el hiperplano y las observaciones es lo más grande posible. Aunque esta idea suena razonable, no es posible aplicarla, ya que habría infinitos hiperplanos contra los que medir las distancias. En su lugar, se recurre a métodos de optimización.
+
+A las observaciones equidistantes respecto al maximal margin hyperplane se les conoce como vectores soporte, ya que son vectores en un espacio p-dimensional y soportan (definen) el maximal margin hyperplane. Cualquier modificación en estas observaciones (vectores soporte) conlleva cambios en el maximal margin hyperplane. Sin embargo, modificaciones en observaciones que no son vector soporte no tienen impacto alguno en el hiperplano.
+
+CASOS CUASI-SEPARABLES LINEALMENTE
+
+El maximal margin hyperplane descrito en el apartado anterior es una forma muy simple y natural de clasificación siempre y cuando exista un hiperplano de separación. En la gran mayoría de casos reales, los datos no se pueden separar linealmente de forma perfecta, por lo que no existe un hiperplano de separación y no puede obtenerse un maximal margin hyperplane.
+
+Para solucionar estas situaciones, se puede extender el concepto de maximal margin hyperplane para obtener un hiperplano que casi separe las clases, pero permitiendo que cometa unos pocos errores. A este tipo de hiperplano se le conoce como Support Vector Classifier o Soft Margin.
+
+El proceso incluye un hiperparámetro de tuning C. C controla el número y severidad de las violaciones del margen (y del hiperplano) que se toleran en el proceso de ajuste. Si C=∞, no se permite ninguna violación del margen y por lo tanto, el resultado es equivalente al Maximal Margin Classifier (teniendo en cuenta que esta solución solo es posible si las clases son perfectamente separables). Cuando más se aproxima C a cero, menos se penalizan los errores y más observaciones pueden estar en el lado incorrecto del margen o incluso del hiperplano. C es a fin de cuentas el hiperparámetro encargado de controlar el balance entre bias y varianza del modelo. En la práctica, su valor óptimo se identifica mediante cross-validation.
+
+
+# 3.Tabla de fortalezas y debilidades.
+
+```{r, echo=FALSE}
+library(kableExtra)
+text_tbl <- data.frame(
+  Fortalezas = c(
+    "Puede adaptarse a problemas de predicción
+  de clase o numérica",
+    "No se deja influenciar mucho por el´ruido´
+  en los datos y no es muy propenso al 
+  sobreajuste",
+    "Puede ser más fácil de usar que una neural
+  network",
+    "Alta precisión"),
+  Debilidades = c(
+    "Encontrar el mejor modelo requiere probar
+  varias combinaciones de kernels y parámetros",
+    "Puede ser lento en el entrenamiento,
+  especialmente si los datos tienen un gran número
+  de características o ejemplos", 
+    "Da como resultado un modelo complejo de
+  caja negra compleja que es difícil, si no 
+  imposible, interpretar.",
+    ""
+  )
+)
+
+kbl(text_tbl) %>%
+  kable_styling(full_width = F) %>%
+  column_spec(1,width = "20em", border_right = T) %>%
+  column_spec(2, width = "20em")
+```
+
+# 4.Resolución del problema.
+
+## Paso 1. Recolectando los datos.  
+
+Data set:
+Los datos se obtienen de un análisis de la expresión génica en pacientes con cáncer de colon mediante microarrays de oligonucleótidos. Después de un proceso de filtrado y normalización se han seleccionado la expresión génica de 2000 genes en 62 muestras de tejido de colon donde 40 son tejidos tumorales y 22 son tejidos sanos. La ultima variable (y) indica el tipo de tejido: “n” normal y “t” tumoral. El fichero con la información se llama Colon2.csv
+Objetivo:
+Se quiere predecir el tipo de tejido (normal/tumoral) en función de la expresión génica del tejido.
+
+```{r}
+setwd("~/UOC/ML/unidad6")
+library(readr)
+colon2 <- read_csv("colon2.csv")
+```
+
+## Paso 2. Explorando y preparando los datos.
+
+SVM requiere que todas las variables sean numéricas y, además, que se escalen a un intervalo bastante pequeño. Algunos de los rangos de estas variables enteras parecen bastante amplios. Esto indica que necesitamos normalizar o estandarizar los datos. Sin embargo, podemos omitir este paso por ahora, porque el paquete R que usaremos para ajustar el modelo SVM realizará el cambio de escala automáticamente.
+
+```{r}
+length(complete.cases(colon2))
+boxplot(colon2[,1:10],main='Datos sin normalizar',col='brown',cex.axis=0.4)
+```
+
+El dataset se dividirá en 2/3 training y 1/3 test. Para utilizar la misma serie de registros de training y de test se usa como semilla inicial el valor de set.seed(12345).
+```{r}
+n <- nrow(colon2)
+# create training and test data
+set.seed(params$seed.train)
+#n_train <- 2/3
+train <- sample(n,floor(n*params$p.train))
+colon.train <- colon2[train,]
+colon.test  <- colon2[-train,]
+
+```
+
+## Paso 3. Entrenando el modelo.  
+
+Empezamos a construir nuestro clasificador. Realizaremos el SVM lineal y gaussiano. Hay que tener en cuenta que un modelo no lineal no asegura mejorar la predicción que uno lineal, más sencillo.
+
+```{r}
+library(kernlab)
+colon_classifier <- ksvm(y ~. , data = colon.train, kernel = "vanilladot")
+```
+## Paso 4. Evaluando el modelo.  
+
+```{r}
+colon.predictions <- predict(colon_classifier, colon.test)
+head(colon.predictions)
+```
+```{r}
+x<- table(colon.predictions, colon.test$y)
+x
+```
+```{r}
+library(caret)
+confusionMatrix(x, positive="t")
+```
+ 
+La especificidad nos indica la capacidad de nuestro estimador para dar como casos negativos los casos realmente sanos, en este caso se obtiene un valor de 1, ya que hay 0 casos identificados erroneamente.
+La sensibilidad caracteriza la capacidad de la prueba para detectar la enfermedad en sujetos enfermos. En este caso observamos 3 falsos negativos.
+
+
+El siguiente comando devuelve un vector de valores VERDADERO o FALSO, lo que indica si la muestra predicha del modelo coincide con la muestra en el conjunto de datos de prueba:
+
+```{r}
+agreement <- colon.predictions == colon.test$y
+prop.table(table(agreement))
+```
+
+Se obtiene una precisión del 85.7%, igual que la obtenida en la ConfusionMatrix.
+
+
+## Paso 5. Mejorando el modelo.
+
+Nuestro modelo SVM anterior utilizó la función lineal simple. Al usar una función de kernel más compleja, podemos mapear los datos en un espacio dimensional superior, y potencialmente obtener un mejor ajuste del modelo.
+Puede resultar complicado elegir entre las diferentes funciones del kernel, se ha demostrado que el kernel RBF gaussiano, funciona bien para muchos tipos de datos.
+
+```{r}
+set.seed(params$seed.clsfier)
+classifier_rbf <- ksvm(y ~ ., data= colon.train, kernel ="rbfdot")
+colon.predictions_rbf <- predict(classifier_rbf, colon.test)
+xrbf<- table(colon.predictions_rbf, colon.test$y)
+confusionMatrix(xrbf, positive="t")
+```
+Se observa que tanto la precisión como la sensibilidad y especificidad disminuyen.
+
+
+# 5. Paquete caret: modelo svmLinear y svmRadial
+
+Se vuelve a analizar el mismo dataset pero ahora usando el modelo svmLinear que corresponde a un SVM lineal y el modelo svmRadial que corresponde a un SVM con kernel gaussiano.
+
+## 5.1.SVM lineal
+```{r}
+set.seed(1)
+#Repeated k-fold Cross Validation
+train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# Fit the model 
+svm1 <- train(y ~., data = colon2, method = "svmLinear", trControl = train_control,  preProcess = c("center","scale"))
+#View the model
+svm1
+```
+
+La precisión es de 0.83. Hay un parámetro de ajuste C, también conocido como *Cost*, que determina los posibles errores de clasificación. Básicamente, impone una penalización al modelo por cometer un error: cuanto mayor sea el valor de C, menos probable es que el algoritmo SVM clasifique erróneamente un punto.
+
+Por defecto, caret construye el clasificador lineal SVM usando C = 1.
+
+Es posible calcular automáticamente SVM para diferentes valores de C y elegir el óptimo que maximice la precisión de la validación cruzada del modelo.
+
+El siguiente código R calcula SVM para valores de cuadrícula de C y elige automáticamente el modelo final para las predicciones:
+
+```{r}
+
+svm2 <- train(y ~., data = colon2, method = "svmLinear", trControl = train_control,  preProcess = c("center","scale"), tuneGrid = expand.grid(C = seq(1, 4, length = 4)))
+
+# Vemos los valores de precisión para los diferentes valores de C
+plot(svm2)
+```
+
+
+
+## 5.2.SVM Gausiano
+
+```{r}
+ 
+svm3 <-  train(y ~., data = colon2, method =  "svmRadial", trControl = train_control, preProcess = c("center","scale"), tuneLength = 10)
+# best tuning parameter sigma y C que maximizan la precisión del modelo
+svm3$bestTune
+```
+
+El valor óptimo de C es el 4. Si vemos el modelo:
+```{r}
+svm3
+```
+
